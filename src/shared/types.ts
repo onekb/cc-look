@@ -98,6 +98,7 @@ export interface AppSettings {
   proxyPort: number  // 代理服务端口，所有平台共用
   autoStart: boolean
   minimizeToTray: boolean
+  floatingWindow: boolean  // 是否启用桌面歌词浮动窗口
 }
 
 // 默认设置
@@ -106,5 +107,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   logRetentionDays: 7,
   proxyPort: 3100,
   autoStart: false,
-  minimizeToTray: true
+  minimizeToTray: true,
+  floatingWindow: false
 }

@@ -30,7 +30,8 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/preload/index.ts')
+          index: resolve(__dirname, 'src/preload/index.ts'),
+          floating: resolve(__dirname, 'src/preload/floating.ts')
         }
       }
     }
@@ -46,7 +47,8 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/renderer/index.html')
+          index: resolve(__dirname, 'src/renderer/index.html'),
+          floating: resolve(__dirname, 'src/renderer/floating.html')
         }
       }
     }

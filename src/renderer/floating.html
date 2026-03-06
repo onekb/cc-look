@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CC Look - Floating</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: transparent;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .container {
+      width: 100%;
+      height: 100vh;
+      background: rgba(30, 30, 30, 0.85);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: opacity 0.5s ease-out;
+    }
+
+    .container.fading {
+      opacity: 0;
+    }
+
+    .header {
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px 12px 0 0;
+      cursor: grab;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      -webkit-app-region: drag;
+    }
+
+    .header:active {
+      cursor: grabbing;
+    }
+
+    .header-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10a37f;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .header-title {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.7);
+      font-weight: 500;
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.9);
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+
+    .content::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .content::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 2px;
+    }
+
+    .content::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .thinking {
+      color: rgba(255, 200, 100, 0.9);
+      font-style: italic;
+    }
+
+    .tool-use {
+      color: rgba(100, 200, 255, 0.9);
+      background: rgba(100, 200, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: inline-block;
+      margin: 2px 0;
+    }
+
+    .server-tool-use {
+      color: rgba(200, 150, 255, 0.9);
+      background: rgba(200, 150, 255, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: inline-block;
+      margin: 2px 0;
+    }
+
+    .status {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.4);
+      padding: 4px 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="container">
+    <div class="header">
+      <div class="header-dot"></div>
+      <span class="header-title">CC Look</span>
+    </div>
+    <div class="content" id="content"></div>
+    <div class="status" id="status">等待流式响应...</div>
+  </div>
+
+  <script>
+    const contentEl = document.getElementById('content')
+    const statusEl = document.getElementById('status')
+    const containerEl = document.getElementById('container')
+
+    let charCount = 0
+
+    // 格式化工具调用显示
+    function formatToolUse(type, content) {
+      try {
+        const data = JSON.parse(content)
+        const name = data.name || 'unknown'
+        let input = ''
+        if (data.input) {
+          input = JSON.stringify(data.input, null, 2)
+        } else if (data.function?.arguments) {
+          input = JSON.stringify(data.function.arguments, null, 2)
+        }
+        return { name, input }
+      } catch {
+        return { name: 'unknown', input: content }
+      }
+    }
+
+    // 接收内容
+    window.floatingApi.onContent((data) => {
+      const { content, type } = data
+
+      if (type === 'start') {
+        statusEl.textContent = '正在响应...'
+        return
+      }
+
+      if (type === 'end') {
+        statusEl.textContent = '响应完成'
+        return
+      }
+
+      if (type === 'thinking') {
+        // 思考内容
+        const span = document.createElement('span')
+        span.className = 'thinking'
+        span.textContent = content
+        contentEl.appendChild(span)
+        charCount += content.length
+      } else if (type === 'tool_use' || type === 'server_tool_use') {
+        // 工具调用
+        const { name, input } = formatToolUse(type, content)
+        const div = document.createElement('div')
+        div.className = type === 'tool_use' ? 'tool-use' : 'server-tool-use'
+        div.innerHTML = `<strong>🔧 ${name}</strong><br><code style="font-size: 11px; opacity: 0.8;">${escapeHtml(input.substring(0, 200))}${input.length > 200 ? '...' : ''}</code>`
+        contentEl.appendChild(div)
+        charCount += input.length
+      } else {
+        // 普通内容
+        const span = document.createElement('span')
+        span.textContent = content
+        contentEl.appendChild(span)
+        charCount += content.length
+      }
+
+      // 自动滚动到底部
+      contentEl.scrollTop = contentEl.scrollHeight
+    })
+
+    // 渐变消失
+    window.floatingApi.onFadeout(() => {
+      containerEl.classList.add('fading')
+    })
+
+    // HTML 转义
+    function escapeHtml(text) {
+      const div = document.createElement('div')
+      div.textContent = text
+      return div.innerHTML
+    }
+  </script>
+</body>
+</html>

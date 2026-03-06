@@ -8,6 +8,7 @@ import * as zlib from 'zlib'
 import * as net from 'net'
 import * as db from '../database'
 import { sendStreamEvent } from '../ipc'
+import { floatingWindowManager } from '../floatingWindow'
 
 export class ProxyManager {
   private server: http.Server | null = null
@@ -198,6 +199,12 @@ export class ProxyManager {
         body: requestBody
       })
     })
+
+    // 浮动窗口 - 请求开始
+    if (floatingWindowManager.isEnabled()) {
+      floatingWindowManager.createWindow(requestId)
+      floatingWindowManager.sendContent(requestId, '', 'start')
+    }
 
     // 去掉路径前缀，得到实际要转发的路径
     const actualPath = req.path.slice(platform.pathPrefix.length) || '/'
@@ -397,6 +404,8 @@ export class ProxyManager {
         if (parsed.choices?.[0]?.delta?.content) {
           aggregatedContent += parsed.choices[0].delta.content
           outputTokenCount++
+          // 浮动窗口
+          floatingWindowManager.sendContent(requestId, parsed.choices[0].delta.content, 'content')
         }
         if (parsed.choices?.[0]?.finish_reason) {
           aggregatedFinishReason = parsed.choices[0].finish_reason
@@ -425,6 +434,11 @@ export class ProxyManager {
             }
             if (toolCall.function?.name) {
               aggregatedToolCalls[index].function.name = toolCall.function.name
+              // 浮动窗口 - 工具调用开始
+              floatingWindowManager.sendContent(requestId, JSON.stringify({
+                name: toolCall.function.name,
+                input: {}
+              }), 'tool_use')
             }
             if (toolCall.function?.arguments) {
               aggregatedToolCalls[index].function.arguments += toolCall.function.arguments
@@ -437,11 +451,15 @@ export class ProxyManager {
         if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
           aggregatedContent += parsed.delta.text
           outputTokenCount++
+          // 浮动窗口
+          floatingWindowManager.sendContent(requestId, parsed.delta.text, 'content')
         }
         // Anthropic thinking 格式
         if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'thinking_delta' && parsed.delta?.thinking) {
           aggregatedThinking += parsed.delta.thinking
           outputTokenCount++
+          // 浮动窗口
+          floatingWindowManager.sendContent(requestId, parsed.delta.thinking, 'thinking')
         }
         // Anthropic 工具调用格式 - 开始 (支持 tool_use 和 server_tool_use)
         if (parsed.type === 'content_block_start' &&
@@ -453,6 +471,11 @@ export class ProxyManager {
             name: parsed.content_block.name || '',
             input: ''
           }
+          // 浮动窗口 - 工具调用开始
+          floatingWindowManager.sendContent(requestId, JSON.stringify({
+            name: parsed.content_block.name,
+            input: {}
+          }), parsed.content_block.type as 'tool_use' | 'server_tool_use')
         }
         // Anthropic 工具调用格式 - 增量
         if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'input_json_delta') {
@@ -651,6 +674,10 @@ export class ProxyManager {
           timestamp: Date.now()
         })
 
+        // 浮动窗口 - 流式结束
+        floatingWindowManager.sendContent(requestId, '', 'end')
+        floatingWindowManager.scheduleClose(requestId)
+
         res.end()
       })
 
@@ -687,6 +714,10 @@ export class ProxyManager {
           timestamp: Date.now()
         })
 
+        // 浮动窗口 - 流式结束
+        floatingWindowManager.sendContent(requestId, '', 'end')
+        floatingWindowManager.scheduleClose(requestId)
+
         res.end()
       })
     }
@@ -702,6 +733,10 @@ export class ProxyManager {
         content: err.message,
         timestamp: Date.now()
       })
+
+      // 浮动窗口 - 错误结束
+      floatingWindowManager.sendContent(requestId, '', 'end')
+      floatingWindowManager.scheduleClose(requestId, 1000)
     })
   }
 
