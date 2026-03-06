@@ -200,12 +200,6 @@ export class ProxyManager {
       })
     })
 
-    // 浮动窗口 - 请求开始
-    if (floatingWindowManager.isEnabled()) {
-      floatingWindowManager.createWindow(requestId)
-      floatingWindowManager.sendContent(requestId, '', 'start')
-    }
-
     // 去掉路径前缀，得到实际要转发的路径
     const actualPath = req.path.slice(platform.pathPrefix.length) || '/'
     const targetUrl = `${platform.baseUrl}${actualPath}`
@@ -267,6 +261,14 @@ export class ProxyManager {
       }
 
       if (isStream) {
+        // 浮动窗口 - 只在流式请求时创建
+        const floatingEnabled = floatingWindowManager.isEnabled()
+        console.log(`[Proxy] 流式请求, 浮动窗口启用: ${floatingEnabled}`)
+        if (floatingEnabled) {
+          console.log(`[Proxy] 创建浮动窗口: ${requestId}`)
+          floatingWindowManager.createWindow(requestId)
+          floatingWindowManager.sendContent(requestId, '', 'start')
+        }
         this.handleStreamResponse(platform, req, res, proxyRes, mainWindow, requestId, responseHeaders, duration, headers, actualPath)
       } else {
         const chunks: Buffer[] = []

@@ -43,6 +43,11 @@ const api = {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET) as Promise<AppSettings>,
     set: (settings: Partial<AppSettings>) =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, settings) as Promise<AppSettings>
+  },
+
+  // 调试
+  debug: {
+    testFloatingWindow: () => ipcRenderer.invoke('debug:testFloatingWindow') as Promise<void>
   }
 }
 

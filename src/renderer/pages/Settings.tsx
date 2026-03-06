@@ -151,6 +151,18 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* Debug - 浮动窗口测试 */}
+        <div className="bg-white rounded-lg p-4 border border-gray-200">
+          <h3 className="font-medium text-gray-900 mb-3">调试工具</h3>
+          <button
+            onClick={() => window.api.debug.testFloatingWindow()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
+          >
+            测试浮动窗口
+          </button>
+          <p className="text-xs text-gray-400 mt-2">点击测试浮动窗口效果（无需开启设置）</p>
+        </div>
+
         {/* About */}
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <h3 className="font-medium text-gray-900 mb-3">关于</h3>

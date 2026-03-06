@@ -21,62 +21,34 @@
     .container {
       width: 100%;
       height: 100vh;
-      background: rgba(30, 30, 30, 0.85);
+      background: rgba(30, 30, 30, 0.5);
       border-radius: 12px;
       display: flex;
       flex-direction: column;
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.1);
       transition: opacity 0.5s ease-out;
+      cursor: grab;
     }
 
     .container.fading {
       opacity: 0;
     }
 
-    .header {
-      padding: 8px 12px;
-      background: rgba(0, 0, 0, 0.3);
-      border-radius: 12px 12px 0 0;
-      cursor: grab;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      -webkit-app-region: drag;
-    }
-
-    .header:active {
+    .container.dragging {
       cursor: grabbing;
-    }
-
-    .header-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #10a37f;
-      animation: pulse 1.5s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-
-    .header-title {
-      font-size: 11px;
-      color: rgba(255, 255, 255, 0.7);
-      font-weight: 500;
     }
 
     .content {
       flex: 1;
       overflow-y: auto;
-      padding: 10px 12px;
+      padding: 12px;
       font-size: 13px;
       line-height: 1.5;
       color: rgba(255, 255, 255, 0.9);
       word-wrap: break-word;
       white-space: pre-wrap;
+      pointer-events: none;
     }
 
     .content::-webkit-scrollbar {
@@ -120,31 +92,48 @@
       display: inline-block;
       margin: 2px 0;
     }
-
-    .status {
-      font-size: 10px;
-      color: rgba(255, 255, 255, 0.4);
-      padding: 4px 12px;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
-    }
   </style>
 </head>
 <body>
   <div class="container" id="container">
-    <div class="header">
-      <div class="header-dot"></div>
-      <span class="header-title">CC Look</span>
-    </div>
     <div class="content" id="content"></div>
-    <div class="status" id="status">等待流式响应...</div>
   </div>
 
   <script>
     const contentEl = document.getElementById('content')
-    const statusEl = document.getElementById('status')
     const containerEl = document.getElementById('container')
 
-    let charCount = 0
+    // 拖拽状态
+    let isDragging = false
+    let startX = 0
+    let startY = 0
+
+    // 鼠标按下
+    document.addEventListener('mousedown', (e) => {
+      isDragging = true
+      startX = e.screenX
+      startY = e.screenY
+      containerEl.classList.add('dragging')
+      window.floatingApi.dragStart()
+    })
+
+    // 鼠标移动
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return
+      const dx = e.screenX - startX
+      const dy = e.screenY - startY
+      window.floatingApi.drag(dx, dy)
+    })
+
+    // 鼠标释放
+    document.addEventListener('mouseup', (e) => {
+      if (!isDragging) return
+      isDragging = false
+      containerEl.classList.remove('dragging')
+      const dx = e.screenX - startX
+      const dy = e.screenY - startY
+      window.floatingApi.dragEnd(dx, dy)
+    })
 
     // 格式化工具调用显示
     function formatToolUse(type, content) {
@@ -168,39 +157,30 @@
       const { content, type } = data
 
       if (type === 'start') {
-        statusEl.textContent = '正在响应...'
         return
       }
 
       if (type === 'end') {
-        statusEl.textContent = '响应完成'
         return
       }
 
       if (type === 'thinking') {
-        // 思考内容
         const span = document.createElement('span')
         span.className = 'thinking'
         span.textContent = content
         contentEl.appendChild(span)
-        charCount += content.length
       } else if (type === 'tool_use' || type === 'server_tool_use') {
-        // 工具调用
         const { name, input } = formatToolUse(type, content)
         const div = document.createElement('div')
         div.className = type === 'tool_use' ? 'tool-use' : 'server-tool-use'
         div.innerHTML = `<strong>🔧 ${name}</strong><br><code style="font-size: 11px; opacity: 0.8;">${escapeHtml(input.substring(0, 200))}${input.length > 200 ? '...' : ''}</code>`
         contentEl.appendChild(div)
-        charCount += input.length
       } else {
-        // 普通内容
         const span = document.createElement('span')
         span.textContent = content
         contentEl.appendChild(span)
-        charCount += content.length
       }
 
-      // 自动滚动到底部
       contentEl.scrollTop = contentEl.scrollHeight
     })
 
@@ -209,7 +189,6 @@
       containerEl.classList.add('fading')
     })
 
-    // HTML 转义
     function escapeHtml(text) {
       const div = document.createElement('div')
       div.textContent = text

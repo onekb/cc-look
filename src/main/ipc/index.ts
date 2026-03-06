@@ -2,6 +2,7 @@ import { ipcMain, BrowserWindow, dialog } from 'electron'
 import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type StreamEvent, type PlatformProxy, DEFAULT_SETTINGS } from '@shared/types'
 import * as db from '../database'
 import { ProxyManager } from '../proxy'
+import { floatingWindowManager } from '../floatingWindow'
 
 const proxyManager = new ProxyManager()
 let mainWindow: BrowserWindow | null = null
@@ -133,6 +134,36 @@ export function setupIpcHandlers(): void {
     }
 
     return newSettings
+  })
+
+  // ==================== 调试工具 ====================
+
+  ipcMain.handle('debug:testFloatingWindow', async (): Promise<void> => {
+    console.log('[IPC] 测试浮动窗口')
+
+    const testRequestId = `test-${Date.now()}`
+    const testContent = '这是一段测试内容，用于验证浮动窗口的显示效果。每一句话都会追加到窗口中，就像真实的流式输出一样。'
+
+    // 创建窗口
+    floatingWindowManager.createWindow(testRequestId)
+    floatingWindowManager.sendContent(testRequestId, '', 'start')
+
+    // 模拟流式输出
+    let charIndex = 0
+    const totalChars = 300
+    const interval = setInterval(() => {
+      if (charIndex >= totalChars) {
+        clearInterval(interval)
+        floatingWindowManager.sendContent(testRequestId, '', 'end')
+        floatingWindowManager.scheduleClose(testRequestId, 3000)
+        return
+      }
+
+      // 每次输出一个字符
+      const char = testContent[charIndex % testContent.length]
+      floatingWindowManager.sendContent(testRequestId, char, 'content')
+      charIndex++
+    }, 100) // 每100ms输出一个字符
   })
 }
 

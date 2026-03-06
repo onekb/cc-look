@@ -20,6 +20,7 @@ export default function Logs() {
   const [selectedType, setSelectedType] = useState<'active' | 'history'>('active')
   const [filter, setFilter] = useState({ platformId: '', status: '' })
   const [expandedActiveRequest, setExpandedActiveRequest] = useState<string | null>(null)
+  const [expandedHeaders, setExpandedHeaders] = useState(false)
   const logContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -201,6 +202,7 @@ export default function Logs() {
         onClick={() => {
           setSelectedLog(log)
           setSelectedType('history')
+          setExpandedHeaders(false)
         }}
         className={`bg-white rounded-lg p-3 border cursor-pointer hover:shadow-md transition-shadow ${
           isSelected ? 'border-primary-500 shadow-md' : 'border-gray-200'
@@ -431,14 +433,29 @@ export default function Logs() {
             {/* 请求头 */}
             {log.requestHeaders && Object.keys(log.requestHeaders).length > 0 && (
               <div>
-                <div className="text-gray-500 text-xs mb-1">请求头</div>
-                <div className="bg-gray-100 p-2 rounded font-mono text-xs">
-                  {Object.entries(log.requestHeaders).map(([key, value]) => (
-                    <div key={key}>
-                      <span className="text-purple-600">{key}:</span> {value}
-                    </div>
-                  ))}
+                <div
+                  className="flex items-center justify-between cursor-pointer select-none hover:bg-gray-50 -mx-1 px-1 py-1 rounded"
+                  onClick={() => setExpandedHeaders(!expandedHeaders)}
+                >
+                  <span className="text-gray-500 text-xs">请求头</span>
+                  <svg
+                    className={`w-4 h-4 text-gray-400 transition-transform ${expandedHeaders ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </div>
+                {expandedHeaders && (
+                  <div className="bg-gray-100 p-2 rounded font-mono text-xs mt-1">
+                    {Object.entries(log.requestHeaders).map(([key, value]) => (
+                      <div key={key}>
+                        <span className="text-purple-600">{key}:</span> {value}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

@@ -8,8 +8,14 @@ contextBridge.exposeInMainWorld('floatingApi', {
   onFadeout: (callback: () => void) => {
     ipcRenderer.on('floating:fadeout', () => callback())
   },
-  // 拖拽支持
-  startDrag: () => {
-    ipcRenderer.send('floating:drag:start')
+  // 拖拽
+  dragStart: () => {
+    ipcRenderer.send('floating:dragstart')
+  },
+  drag: (dx: number, dy: number) => {
+    ipcRenderer.send('floating:drag', { dx, dy })
+  },
+  dragEnd: (dx: number, dy: number) => {
+    ipcRenderer.send('floating:dragend', { dx, dy })
   }
 })
