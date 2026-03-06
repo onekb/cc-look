@@ -41,14 +41,22 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-build
-          path: release/**/*
+          path: |
+            release/**/*.dmg
+            release/**/*.zip
+            release/**/*.blockmap
+            release/**/*.yml
 
       - name: Upload artifacts (Windows)
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: release/**/*
+          path: |
+            release/**/*.zip
+            release/**/*.exe
+            release/**/*.blockmap
+            release/**/*.yml
 
   create-release:
     needs: release
