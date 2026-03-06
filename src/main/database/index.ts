@@ -28,14 +28,79 @@ export async function initDatabase(): Promise<void> {
       name TEXT NOT NULL,
       protocol TEXT NOT NULL,
       baseUrl TEXT NOT NULL,
-      apiKey TEXT NOT NULL,
-      localPort INTEGER NOT NULL,
-      localPath TEXT,
+      pathPrefix TEXT NOT NULL,
       enabled INTEGER DEFAULT 1,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     )
   `)
+
+  // 迁移：检查是否存在旧的列（localPort, localPath）
+  const tableInfo = db.exec("PRAGMA table_info(platforms)")
+  if (tableInfo.length > 0) {
+    const columns = tableInfo[0].values.map(row => row[1] as string)
+
+    // 如果存在 localPort 但不存在 pathPrefix，需要迁移
+    if (columns.includes('localPort') && !columns.includes('pathPrefix')) {
+      console.log('[Database] 检测到旧表结构，开始迁移...')
+
+      // 创建新表
+      db.run(`
+        CREATE TABLE platforms_new (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          protocol TEXT NOT NULL,
+          baseUrl TEXT NOT NULL,
+          pathPrefix TEXT NOT NULL DEFAULT '',
+          enabled INTEGER DEFAULT 1,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL
+        )
+      `)
+
+      // 迁移数据：将 localPath 映射到 pathPrefix，如果没有则使用默认值
+      const oldPlatforms = db.exec('SELECT * FROM platforms')
+      if (oldPlatforms.length > 0) {
+        const oldColumns = oldPlatforms[0].columns
+        for (const row of oldPlatforms[0].values) {
+          const obj: Record<string, unknown> = {}
+          oldColumns.forEach((col, i) => {
+            obj[col] = row[i]
+          })
+
+          // 生成默认的 pathPrefix
+          let pathPrefix = obj.localPath as string || ''
+          if (!pathPrefix) {
+            // 根据协议类型生成默认前缀
+            const protocol = obj.protocol as string
+            pathPrefix = protocol === 'openai' ? '/openai' : '/claude'
+          }
+
+          db.run(
+            `INSERT INTO platforms_new (id, name, protocol, baseUrl, pathPrefix, enabled, createdAt, updatedAt)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              obj.id,
+              obj.name,
+              obj.protocol,
+              obj.baseUrl,
+              pathPrefix,
+              obj.enabled ? 1 : 0,
+              obj.createdAt,
+              obj.updatedAt
+            ]
+          )
+        }
+      }
+
+      // 删除旧表
+      db.run('DROP TABLE platforms')
+      // 重命名新表
+      db.run('ALTER TABLE platforms_new RENAME TO platforms')
+
+      console.log('[Database] 迁移完成')
+    }
+  }
 
   // 创建日志表
   db.run(`
@@ -50,13 +115,55 @@ export async function initDatabase(): Promise<void> {
       responseStatus INTEGER,
       responseBody TEXT,
       responseHeaders TEXT,
+      streamData TEXT,
       duration INTEGER,
       isStream INTEGER DEFAULT 0,
+      inputTokens INTEGER,
+      outputTokens INTEGER,
+      firstTokenTime INTEGER,
+      tokensPerSecond REAL,
       error TEXT,
       createdAt INTEGER NOT NULL,
       FOREIGN KEY (platformId) REFERENCES platforms(id)
     )
   `)
+
+  // 迁移日志表：添加新字段
+  const logTableInfo = db.exec("PRAGMA table_info(request_logs)")
+  if (logTableInfo.length > 0) {
+    const logColumns = logTableInfo[0].values.map(row => row[1] as string)
+
+    // 添加 streamData 字段
+    if (!logColumns.includes('streamData')) {
+      db.run('ALTER TABLE request_logs ADD COLUMN streamData TEXT')
+      console.log('[Database] 添加 streamData 字段')
+    }
+    // 添加 inputTokens 字段
+    if (!logColumns.includes('inputTokens')) {
+      db.run('ALTER TABLE request_logs ADD COLUMN inputTokens INTEGER')
+      console.log('[Database] 添加 inputTokens 字段')
+    }
+    // 添加 outputTokens 字段
+    if (!logColumns.includes('outputTokens')) {
+      db.run('ALTER TABLE request_logs ADD COLUMN outputTokens INTEGER')
+      console.log('[Database] 添加 outputTokens 字段')
+    }
+    // 添加 firstTokenTime 字段
+    if (!logColumns.includes('firstTokenTime')) {
+      db.run('ALTER TABLE request_logs ADD COLUMN firstTokenTime INTEGER')
+      console.log('[Database] 添加 firstTokenTime 字段')
+    }
+    // 添加 tokensPerSecond 字段
+    if (!logColumns.includes('tokensPerSecond')) {
+      db.run('ALTER TABLE request_logs ADD COLUMN tokensPerSecond REAL')
+      console.log('[Database] 添加 tokensPerSecond 字段')
+    }
+    // 添加 cacheReadInputTokens 字段
+    if (!logColumns.includes('cacheReadInputTokens')) {
+      db.run('ALTER TABLE request_logs ADD COLUMN cacheReadInputTokens INTEGER')
+      console.log('[Database] 添加 cacheReadInputTokens 字段')
+    }
+  }
 
   // 创建索引
   db.run(`CREATE INDEX IF NOT EXISTS idx_logs_platformId ON request_logs(platformId)`)
@@ -74,6 +181,21 @@ export async function initDatabase(): Promise<void> {
   const result = db.exec("SELECT value FROM settings WHERE key = 'appSettings'")
   if (result.length === 0) {
     db.run("INSERT INTO settings (key, value) VALUES (?, ?)", ['appSettings', JSON.stringify(DEFAULT_SETTINGS)])
+  } else {
+    // 迁移旧设置：将 basePort 改为 proxyPort
+    const settingsValue = result[0].values[0][0] as string
+    try {
+      const oldSettings = JSON.parse(settingsValue)
+      if (oldSettings.basePort !== undefined && oldSettings.proxyPort === undefined) {
+        oldSettings.proxyPort = oldSettings.basePort
+        delete oldSettings.basePort
+        db.run("UPDATE settings SET value = ? WHERE key = 'appSettings'", [JSON.stringify(oldSettings)])
+        settingsCache = null // 清除缓存
+        console.log('[Database] 设置迁移完成：basePort -> proxyPort')
+      }
+    } catch {
+      // ignore
+    }
   }
 
   saveDatabase()
@@ -132,16 +254,14 @@ export function createPlatform(data: Omit<Platform, 'id' | 'createdAt' | 'update
   }
 
   db!.run(
-    `INSERT INTO platforms (id, name, protocol, baseUrl, apiKey, localPort, localPath, enabled, createdAt, updatedAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO platforms (id, name, protocol, baseUrl, pathPrefix, enabled, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       platform.id,
       platform.name,
       platform.protocol,
       platform.baseUrl,
-      platform.apiKey,
-      platform.localPort,
-      platform.localPath || null,
+      platform.pathPrefix,
       platform.enabled ? 1 : 0,
       platform.createdAt,
       platform.updatedAt
@@ -167,15 +287,13 @@ export function updatePlatform(id: string, updates: Partial<Platform>): Platform
 
   db!.run(
     `UPDATE platforms
-     SET name = ?, protocol = ?, baseUrl = ?, apiKey = ?, localPort = ?, localPath = ?, enabled = ?, updatedAt = ?
+     SET name = ?, protocol = ?, baseUrl = ?, pathPrefix = ?, enabled = ?, updatedAt = ?
      WHERE id = ?`,
     [
       updatedPlatform.name,
       updatedPlatform.protocol,
       updatedPlatform.baseUrl,
-      updatedPlatform.apiKey,
-      updatedPlatform.localPort,
-      updatedPlatform.localPath || null,
+      updatedPlatform.pathPrefix,
       updatedPlatform.enabled ? 1 : 0,
       updatedPlatform.updatedAt,
       id
@@ -262,8 +380,8 @@ export function createLog(log: Omit<RequestLog, 'id' | 'createdAt'>): RequestLog
   }
 
   db!.run(
-    `INSERT INTO request_logs (id, platformId, baseUrl, method, path, requestBody, requestHeaders, responseStatus, responseBody, responseHeaders, duration, isStream, error, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO request_logs (id, platformId, baseUrl, method, path, requestBody, requestHeaders, responseStatus, responseBody, responseHeaders, streamData, duration, isStream, inputTokens, outputTokens, cacheReadInputTokens, firstTokenTime, tokensPerSecond, error, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       newLog.id,
       newLog.platformId,
@@ -275,8 +393,14 @@ export function createLog(log: Omit<RequestLog, 'id' | 'createdAt'>): RequestLog
       newLog.responseStatus,
       newLog.responseBody || null,
       newLog.responseHeaders ? JSON.stringify(newLog.responseHeaders) : null,
+      newLog.streamData || null,
       newLog.duration,
       newLog.isStream ? 1 : 0,
+      newLog.inputTokens ?? null,
+      newLog.outputTokens ?? null,
+      newLog.cacheReadInputTokens ?? null,
+      newLog.firstTokenTime ?? null,
+      newLog.tokensPerSecond ?? null,
       newLog.error || null,
       newLog.createdAt
     ]

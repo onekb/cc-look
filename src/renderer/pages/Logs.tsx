@@ -70,6 +70,17 @@ export default function Logs() {
     return `${(ms / 1000).toFixed(2)}s`
   }
 
+  const formatTokenSpeed = (tokensPerSecond: number | undefined | null) => {
+    if (!tokensPerSecond) return '-'
+    return `${tokensPerSecond.toFixed(1)} tok/s`
+  }
+
+  const formatFirstTokenTime = (ms: number | undefined | null) => {
+    if (!ms) return '-'
+    if (ms < 1000) return `${ms}ms`
+    return `${(ms / 1000).toFixed(2)}s`
+  }
+
   const getStatusColor = (status: number) => {
     if (status >= 200 && status < 300) return 'text-green-600 bg-green-100'
     if (status >= 400 && status < 500) return 'text-yellow-600 bg-yellow-100'
@@ -214,6 +225,24 @@ export default function Logs() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Token 统计 */}
+            {(log.inputTokens || log.outputTokens) && (
+              <span className="text-xs text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded" title="输入/输出 tokens">
+                {log.inputTokens || 0}/{log.outputTokens || 0}
+              </span>
+            )}
+            {/* 首Token时间 */}
+            {log.firstTokenTime && (
+              <span className="text-xs text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded" title="首 Token 时间">
+                TTFT: {formatFirstTokenTime(log.firstTokenTime)}
+              </span>
+            )}
+            {/* 输出速度 */}
+            {log.tokensPerSecond && (
+              <span className="text-xs text-green-600 bg-green-100 px-1.5 py-0.5 rounded" title="输出速度">
+                {formatTokenSpeed(log.tokensPerSecond)}
+              </span>
+            )}
             <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(log.responseStatus)}`}>
               {log.responseStatus}
             </span>
@@ -359,6 +388,37 @@ export default function Logs() {
               </div>
             </div>
 
+            {/* Token 统计 */}
+            {(log.isStream || log.inputTokens || log.outputTokens) && (
+              <div className="bg-purple-50 rounded-lg p-3">
+                <div className="text-purple-700 text-xs font-medium mb-2">Token 统计</div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-purple-500 text-xs">输入 Tokens</div>
+                    <div className="font-medium text-purple-700">{log.inputTokens ?? '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-purple-500 text-xs">输出 Tokens</div>
+                    <div className="font-medium text-purple-700">{log.outputTokens ?? '-'}</div>
+                  </div>
+                  {log.cacheReadInputTokens && (
+                    <div>
+                      <div className="text-purple-500 text-xs">缓存读取 Tokens</div>
+                      <div className="font-medium text-purple-700">{log.cacheReadInputTokens}</div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-purple-500 text-xs">首 Token 时间</div>
+                    <div className="font-medium text-purple-700">{formatFirstTokenTime(log.firstTokenTime)}</div>
+                  </div>
+                  <div>
+                    <div className="text-purple-500 text-xs">输出速度</div>
+                    <div className="font-medium text-purple-700">{formatTokenSpeed(log.tokensPerSecond)}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* URL */}
             <div>
               <div className="text-gray-500 text-xs mb-1">请求地址</div>
@@ -398,6 +458,16 @@ export default function Logs() {
                 <div className="text-gray-500 text-xs mb-1">响应体</div>
                 <pre className="bg-gray-900 text-gray-300 p-2 rounded font-mono text-xs overflow-auto max-h-60">
                   {formatJson(log.responseBody)}
+                </pre>
+              </div>
+            )}
+
+            {/* 汇总内容（流式输出） */}
+            {log.isStream && log.streamData && (
+              <div>
+                <div className="text-gray-500 text-xs mb-1">汇总内容</div>
+                <pre className="bg-gray-900 text-gray-300 p-2 rounded font-mono text-xs overflow-auto max-h-60">
+                  {formatJson(log.streamData)}
                 </pre>
               </div>
             )}

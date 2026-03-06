@@ -7,9 +7,7 @@ export interface Platform {
   name: string
   protocol: ProtocolType
   baseUrl: string
-  apiKey?: string  // 可选，如果不配置则直接转发客户端的请求头
-  localPort: number
-  localPath?: string
+  pathPrefix: string  // 路径前缀，用于区分不同平台，如 /openai, /claude
   enabled: boolean
   createdAt: number
   updatedAt: number
@@ -23,8 +21,14 @@ export interface PlatformProxy {
   platformId: string
   status: ProxyStatus
   localUrl: string
-  requestCount: number
-  lastRequestAt?: number
+}
+
+// Token 统计信息
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+  firstTokenTime: number | null  // 首个 token 时间（毫秒），相对于请求开始
+  tokensPerSecond: number | null  // 输出 token/s
 }
 
 // 请求日志
@@ -39,8 +43,14 @@ export interface RequestLog {
   responseStatus: number
   responseHeaders?: Record<string, string>
   responseBody?: string
+  streamData?: string  // SSE 数据汇总成的一条 JSON
   duration: number
   isStream: boolean
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadInputTokens?: number  // 缓存读取的 token 数
+  firstTokenTime?: number  // 首个 token 时间（毫秒）
+  tokensPerSecond?: number  // 输出 token/s
   error?: string
   createdAt: number
 }
@@ -85,7 +95,7 @@ export const IPC_CHANNELS = {
 export interface AppSettings {
   theme: 'light' | 'dark' | 'system'
   logRetentionDays: number
-  basePort: number
+  proxyPort: number  // 代理服务端口，所有平台共用
   autoStart: boolean
   minimizeToTray: boolean
 }
@@ -94,7 +104,7 @@ export interface AppSettings {
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   logRetentionDays: 7,
-  basePort: 3100,
+  proxyPort: 3100,
   autoStart: false,
   minimizeToTray: true
 }

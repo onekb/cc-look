@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express'
 import { type BrowserWindow } from 'electron'
-import { type Platform, type StreamEvent } from '@shared/types'
+import { type Platform } from '@shared/types'
 import { v4 as uuidv4 } from 'uuid'
 import * as http from 'http'
 import * as https from 'https'
@@ -9,14 +9,11 @@ import * as net from 'net'
 import * as db from '../database'
 import { sendStreamEvent } from '../ipc'
 
-interface ProxyInstance {
-  platform: Platform
-  server: http.Server
-  port: number
-}
-
 export class ProxyManager {
-  private proxies: Map<string, ProxyInstance> = new Map()
+  private server: http.Server | null = null
+  private port: number = 3100
+  private platforms: Map<string, Platform> = new Map()
+  private isRunning: boolean = false
 
   // 检查端口是否可用
   private isPortAvailable(port: number): Promise<boolean> {
@@ -30,91 +27,135 @@ export class ProxyManager {
     })
   }
 
-  // 强制关闭占用端口的进程
-  private async killPortProcess(port: number): Promise<boolean> {
-    // 先检查是否是我们自己的代理占用的端口
-    for (const [id, instance] of this.proxies) {
-      if (instance.port === port) {
-        this.stop(id)
-        console.log(`[Proxy] 已停止占用端口 ${port} 的代理`)
-        return true
+  // 设置端口
+  setPort(port: number): void {
+    this.port = port
+  }
+
+  // 获取端口
+  getPort(): number {
+    return this.port
+  }
+
+  // 添加或更新平台
+  registerPlatform(platform: Platform): void {
+    this.platforms.set(platform.id, platform)
+    console.log(`[Proxy] 注册平台: ${platform.name}, 路径前缀: ${platform.pathPrefix}`)
+  }
+
+  // 移除平台
+  unregisterPlatform(platformId: string): void {
+    const platform = this.platforms.get(platformId)
+    if (platform) {
+      this.platforms.delete(platformId)
+      console.log(`[Proxy] 注销平台: ${platform.name}`)
+    }
+  }
+
+  // 根据路径查找平台
+  private findPlatformByPath(path: string): Platform | null {
+    // 按路径前缀长度降序排序，确保更长的前缀优先匹配
+    const sortedPlatforms = Array.from(this.platforms.values())
+      .sort((a, b) => b.pathPrefix.length - a.pathPrefix.length)
+
+    for (const platform of sortedPlatforms) {
+      if (path.startsWith(platform.pathPrefix)) {
+        return platform
       }
     }
+    return null
+  }
 
-    // 如果不是我们的代理，等待端口释放
-    const available = await this.isPortAvailable(port)
-    if (available) {
+  // 启动代理服务器
+  async start(mainWindow: BrowserWindow | null): Promise<boolean> {
+    // 如果服务器已在运行，直接返回成功
+    if (this.isRunning && this.server) {
+      console.log(`[Proxy] 服务器已在运行，端口: ${this.port}`)
       return true
     }
 
-    console.error(`[Proxy] 端口 ${port} 被其他进程占用`)
-    return false
-  }
-
-  async start(platform: Platform, mainWindow: BrowserWindow | null): Promise<boolean> {
-    // 如果已有该平台的代理，先停止
-    if (this.proxies.has(platform.id)) {
-      this.stop(platform.id)
-    }
-
-    // 检查并释放端口
-    const portReady = await this.killPortProcess(platform.localPort)
-    if (!portReady) {
-      console.error(`[Proxy] 端口 ${platform.localPort} 不可用`)
+    // 检查端口是否可用
+    const available = await this.isPortAvailable(this.port)
+    if (!available) {
+      console.error(`[Proxy] 端口 ${this.port} 已被占用`)
       return false
     }
 
     const app = express()
     app.use(express.json({ limit: '10mb' }))
 
-    app.use((req: Request, res: Response, next) => {
-      ;(req as any).startTime = Date.now()
-      ;(req as any).requestBody = req.body
-      ;(req as any).requestId = uuidv4()
-      console.log(`[Proxy] ${platform.name} - 收到请求: ${req.method} ${req.path}`)
-      next()
+    // 请求计时和日志中间件
+    app.use((req: Request, _res: Response, next) => {
+      (req as any).startTime = Date.now();
+      (req as any).requestBody = req.body;
+      (req as any).requestId = uuidv4();
+      next();
+    });
+
+    // 健康检查
+    app.get('/health', (_req: Request, res: Response) => {
+      res.json({
+        status: 'ok',
+        timestamp: Date.now(),
+        platforms: Array.from(this.platforms.values()).map(p => ({
+          name: p.name,
+          pathPrefix: p.pathPrefix
+        }))
+      })
     })
 
+    // 路由所有请求
     app.all('*', async (req: Request, res: Response) => {
+      const platform = this.findPlatformByPath(req.path)
+
+      if (!platform) {
+        console.log(`[Proxy] 未找到匹配的平台: ${req.path}`)
+        res.status(404).json({
+          error: 'Platform not found',
+          path: req.path,
+          availablePrefixes: Array.from(this.platforms.values()).map(p => p.pathPrefix)
+        })
+        return
+      }
+
       await this.handleRequest(platform, req, res, mainWindow)
     })
 
-    app.get('/health', (_req: Request, res: Response) => {
-      res.json({ status: 'ok', platform: platform.name, timestamp: Date.now() })
-    })
-
-    app.use((_req: Request, res: Response) => {
-      res.status(404).json({ error: 'Not found' })
-    })
-
     return new Promise((resolve) => {
-      const server = app.listen(platform.localPort, () => {
-        console.log(`[Proxy] ${platform.name} 监听端口 ${platform.localPort}`)
-        server.timeout = 120000
-        server.keepAliveTimeout = 65000
-        this.proxies.set(platform.id, { platform, server, port: platform.localPort })
+      this.server = app.listen(this.port, () => {
+        console.log(`[Proxy] 代理服务器已启动，监听端口 ${this.port}`)
+        console.log(`[Proxy] 已注册平台: ${Array.from(this.platforms.values()).map(p => `${p.name}(${p.pathPrefix})`).join(', ')}`)
+        this.isRunning = true
+        if (this.server) {
+          this.server.timeout = 120000
+          this.server.keepAliveTimeout = 65000
+        }
         resolve(true)
       })
 
-      server.on('error', (error: NodeJS.ErrnoException) => {
+      this.server?.on('error', (error: NodeJS.ErrnoException) => {
         if (error.code === 'EADDRINUSE') {
-          console.error(`[Proxy] 端口 ${platform.localPort} 已被占用`)
+          console.error(`[Proxy] 端口 ${this.port} 已被占用`)
         } else {
-          console.error(`[Proxy] 启动 ${platform.name} 失败:`, error)
+          console.error(`[Proxy] 启动失败:`, error)
         }
+        this.isRunning = false
         resolve(false)
       })
     })
   }
 
-  stop(platformId: string): boolean {
-    const instance = this.proxies.get(platformId)
-    if (!instance) return false
+  // 停止代理服务器
+  stop(): boolean {
+    if (!this.server || !this.isRunning) {
+      return true
+    }
 
     try {
-      instance.server.close()
-      this.proxies.delete(platformId)
-      console.log(`[Proxy] 已停止 ${instance.platform.name}`)
+      this.server.close()
+      this.server = null
+      this.isRunning = false
+      console.log(`[Proxy] 代理服务器已停止`)
       return true
     } catch (error) {
       console.error(`[Proxy] 停止失败:`, error)
@@ -122,15 +163,16 @@ export class ProxyManager {
     }
   }
 
+  // 获取状态
   getStatus(platformId: string) {
-    const instance = this.proxies.get(platformId)
-    if (!instance) {
-      return { platformId, status: 'stopped', localUrl: '' }
+    const platform = this.platforms.get(platformId)
+    if (!platform || !this.isRunning) {
+      return { platformId, status: 'stopped' as const, localUrl: '' }
     }
     return {
       platformId,
-      status: 'running',
-      localUrl: `http://localhost:${instance.port}`
+      status: 'running' as const,
+      localUrl: `http://localhost:${this.port}${platform.pathPrefix}`
     }
   }
 
@@ -157,11 +199,10 @@ export class ProxyManager {
       })
     })
 
-    // 构建目标 URL（包含 localPath 前缀）
-    const pathPrefix = platform.localPath || ''
-    const fullPath = `${pathPrefix}${req.path}`
-    const targetUrl = `${platform.baseUrl}${fullPath}`
-    console.log(`[Proxy] ${platform.name} - 原始路径: ${req.path}, localPath: ${pathPrefix || '(空)'}, 完整路径: ${fullPath}`)
+    // 去掉路径前缀，得到实际要转发的路径
+    const actualPath = req.path.slice(platform.pathPrefix.length) || '/'
+    const targetUrl = `${platform.baseUrl}${actualPath}`
+    console.log(`[Proxy] ${platform.name} - 原始路径: ${req.path}, 去掉前缀后: ${actualPath}`)
     console.log(`[Proxy] ${platform.name} - 转发到: ${targetUrl}`)
 
     const url = new URL(targetUrl)
@@ -219,7 +260,7 @@ export class ProxyManager {
       }
 
       if (isStream) {
-        this.handleStreamResponse(platform, req, res, proxyRes, mainWindow, requestId, responseHeaders, duration, headers)
+        this.handleStreamResponse(platform, req, res, proxyRes, mainWindow, requestId, responseHeaders, duration, headers, actualPath)
       } else {
         const chunks: Buffer[] = []
         proxyRes.on('data', (chunk) => chunks.push(chunk))
@@ -233,7 +274,7 @@ export class ProxyManager {
           // 只有未压缩的响应才转换为文本记录日志
           const responseBody = isCompressed ? `[压缩数据 ${buffer.length} bytes]` : buffer.toString('utf-8')
 
-          this.createLog(platform, req, statusCode, responseBody, responseHeaders, duration, false, undefined, headers)
+          this.createLog(platform, req, statusCode, responseBody, responseHeaders, duration, false, undefined, headers, actualPath)
 
           // 发送原始 buffer 给客户端
           res.status(statusCode).send(buffer)
@@ -248,7 +289,7 @@ export class ProxyManager {
         })
         proxyRes.on('error', (err) => {
           console.error(`[Proxy] 响应错误:`, err)
-          this.createLog(platform, req, statusCode, undefined, responseHeaders, duration, false, err.message, headers)
+          this.createLog(platform, req, statusCode, undefined, responseHeaders, duration, false, err.message, headers, actualPath)
           sendStreamEvent(mainWindow, {
             platformId: platform.id,
             requestId,
@@ -263,7 +304,7 @@ export class ProxyManager {
     proxyReq.on('error', (err) => {
       const duration = Date.now() - startTime
       console.error(`[Proxy] 请求错误:`, err.message)
-      this.createLog(platform, req, 0, undefined, {}, duration, false, err.message, headers)
+      this.createLog(platform, req, 0, undefined, {}, duration, false, err.message, headers, actualPath)
 
       sendStreamEvent(mainWindow, {
         platformId: platform.id,
@@ -301,11 +342,25 @@ export class ProxyManager {
     requestId: string,
     responseHeaders: Record<string, string>,
     duration: number,
-    requestHeaders: Record<string, string>
+    requestHeaders: Record<string, string>,
+    actualPath: string
   ): void {
     let fullContent = ''
     let sseBuffer = ''
     const chunks: Buffer[] = []
+    const requestStartTime = (req as any).startTime || Date.now()
+    let firstTokenTime: number | null = null
+    let outputTokenCount = 0
+
+    // 汇总流式输出的内容
+    let aggregatedContent = ''
+    let aggregatedThinking = ''  // 思考内容
+    let aggregatedUsage: any = null
+    let aggregatedCacheReadInputTokens: number | null = null
+    let aggregatedModel: string | null = null
+    let aggregatedId: string | null = null
+    let aggregatedRole: string | null = null
+    let aggregatedFinishReason: string | null = null
 
     // 检查是否是压缩的响应
     const contentEncoding = (proxyRes.headers['content-encoding'] || '').toLowerCase()
@@ -325,6 +380,80 @@ export class ProxyManager {
       decompressStream = null as any// 不需要解压
     }
 
+    // 解析 SSE 数据并提取内容
+    const parseSseEvent = (data: string): void => {
+      if (data === '[DONE]') return
+
+      try {
+        const parsed = JSON.parse(data)
+
+        // 记录首次 token 时间
+        if (firstTokenTime === null && hasContent(parsed)) {
+          firstTokenTime = Date.now() - requestStartTime
+        }
+
+        // OpenAI 格式
+        if (parsed.choices?.[0]?.delta?.content) {
+          aggregatedContent += parsed.choices[0].delta.content
+          outputTokenCount++
+        }
+        if (parsed.choices?.[0]?.finish_reason) {
+          aggregatedFinishReason = parsed.choices[0].finish_reason
+        }
+        if (parsed.id) aggregatedId = parsed.id
+        if (parsed.model) aggregatedModel = parsed.model
+        if (parsed.choices?.[0]?.delta?.role) {
+          aggregatedRole = parsed.choices[0].delta.role
+        }
+        if (parsed.usage) {
+          aggregatedUsage = parsed.usage
+        }
+
+        // Anthropic 格式
+        if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+          aggregatedContent += parsed.delta.text
+          outputTokenCount++
+        }
+        // Anthropic thinking 格式
+        if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'thinking_delta' && parsed.delta?.thinking) {
+          aggregatedThinking += parsed.delta.thinking
+          outputTokenCount++
+        }
+        if (parsed.type === 'message_start' && parsed.message) {
+          if (parsed.message.id) aggregatedId = parsed.message.id
+          if (parsed.message.model) aggregatedModel = parsed.message.model
+          if (parsed.message.role) aggregatedRole = parsed.message.role
+          if (parsed.message.usage) {
+            aggregatedUsage = {
+              input_tokens: parsed.message.usage.input_tokens,
+              cache_read_input_tokens: parsed.message.usage.cache_read_input_tokens,
+              cache_creation_input_tokens: parsed.message.usage.cache_creation_input_tokens
+            }
+          }
+        }
+        if (parsed.type === 'message_delta' && parsed.usage) {
+          aggregatedUsage = {
+            ...aggregatedUsage,
+            output_tokens: parsed.usage.output_tokens
+          }
+          if (parsed.delta?.stop_reason) {
+            aggregatedFinishReason = parsed.delta.stop_reason
+          }
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+
+    // 检查是否有内容输出
+    const hasContent = (parsed: any): boolean => {
+      // OpenAI 格式
+      if (parsed.choices?.[0]?.delta?.content) return true
+      // Anthropic 格式
+      if (parsed.type === 'content_block_delta' && parsed.delta?.text) return true
+      return false
+    }
+
     // 处理解压后的数据（用于日志和SSE事件）
     const processDecompressedData = (data: string) => {
       fullContent += data
@@ -337,6 +466,8 @@ export class ProxyManager {
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const content = line.slice(6).trim()
+          parseSseEvent(content)
+
           sendStreamEvent(mainWindow, {
             platformId: platform.id,
             requestId,
@@ -354,6 +485,74 @@ export class ProxyManager {
           })
         }
       }
+    }
+
+    // 构建汇总的流式输出数据
+    const buildAggregatedData = (): any => {
+      const result: any = {}
+
+      if (aggregatedId) result.id = aggregatedId
+      if (aggregatedModel) result.model = aggregatedModel
+      if (aggregatedRole) result.role = aggregatedRole
+      if (aggregatedThinking) result.thinking = aggregatedThinking
+      if (aggregatedContent) result.content = aggregatedContent
+      if (aggregatedFinishReason) result.finish_reason = aggregatedFinishReason
+      if (aggregatedUsage) result.usage = aggregatedUsage
+
+      return result
+    }
+
+    // 计算最终统计信息并创建日志
+    const finalizeLog = (error?: string) => {
+      // 计算 token/s（从首 token 开始计算）
+      const totalDuration = Date.now() - requestStartTime
+      const tokenGenerationDuration = firstTokenTime !== null
+        ? totalDuration - firstTokenTime
+        : totalDuration
+      const tokensPerSecond = outputTokenCount > 0 && tokenGenerationDuration > 0
+        ? (outputTokenCount / (tokenGenerationDuration / 1000))
+        : null
+
+      // 从请求体中提取 input tokens（如果有）
+      const requestBody = (req as any).requestBody
+      let inputTokens: number | undefined
+      let cacheReadInputTokens: number | undefined
+      if (requestBody?.messages) {
+        // 粗略估算：每个字符约 0.25 tokens
+        const messageStr = JSON.stringify(requestBody.messages)
+        inputTokens = Math.ceil(messageStr.length * 0.25)
+      }
+
+      // 从汇总的 usage 中提取更准确的 token 统计
+      if (aggregatedUsage) {
+        if (aggregatedUsage.prompt_tokens) {
+          inputTokens = aggregatedUsage.prompt_tokens
+        }
+        if (aggregatedUsage.input_tokens) {
+          inputTokens = aggregatedUsage.input_tokens
+        }
+        if (aggregatedUsage.completion_tokens) {
+          outputTokenCount = aggregatedUsage.completion_tokens
+        }
+        if (aggregatedUsage.output_tokens) {
+          outputTokenCount = aggregatedUsage.output_tokens
+        }
+        if (aggregatedUsage.cache_read_input_tokens) {
+          cacheReadInputTokens = aggregatedUsage.cache_read_input_tokens
+        }
+      }
+
+      // 构建汇总数据
+      const streamData = buildAggregatedData()
+
+      this.createLog(
+        platform, req, proxyRes.statusCode || 0,
+        fullContent.slice(0, 50000),
+        responseHeaders, duration, true,
+        error, requestHeaders, actualPath,
+        Object.keys(streamData).length > 0 ? JSON.stringify(streamData, null, 2) : undefined,
+        inputTokens, outputTokenCount, cacheReadInputTokens, firstTokenTime, tokensPerSecond
+      )
     }
 
     if (isCompressed && decompressStream) {
@@ -374,7 +573,7 @@ export class ProxyManager {
 
       decompressStream.on('end', () => {
         console.log(`[Proxy] ${platform.name} - 流式响应结束`)
-        this.createLog(platform, req, proxyRes.statusCode || 0, fullContent.slice(0, 50000), responseHeaders, duration, true, undefined, requestHeaders)
+        finalizeLog()
 
         sendStreamEvent(mainWindow, {
           platformId: platform.id,
@@ -388,9 +587,8 @@ export class ProxyManager {
 
       decompressStream.on('error', (err) => {
         console.error(`[Proxy] 解压错误:`, err)
-        // 解压失败时，至少记录原始数据大小
         const totalBytes = chunks.reduce((sum, c) => sum + c.length, 0)
-        this.createLog(platform, req, proxyRes.statusCode || 0, `[解压失败，原始数据 ${totalBytes} bytes]`, responseHeaders, duration, true, undefined, requestHeaders)
+        finalizeLog(`解压失败，原始数据 ${totalBytes} bytes`)
 
         sendStreamEvent(mainWindow, {
           platformId: platform.id,
@@ -411,7 +609,7 @@ export class ProxyManager {
 
       proxyRes.on('end', () => {
         console.log(`[Proxy] ${platform.name} - 流式响应结束`)
-        this.createLog(platform, req, proxyRes.statusCode || 0, fullContent.slice(0, 50000), responseHeaders, duration, true, undefined, requestHeaders)
+        finalizeLog()
 
         sendStreamEvent(mainWindow, {
           platformId: platform.id,
@@ -426,7 +624,7 @@ export class ProxyManager {
 
     proxyRes.on('error', (err) => {
       console.error(`[Proxy] 流式响应错误:`, err)
-      this.createLog(platform, req, proxyRes.statusCode || 0, fullContent.slice(0, 50000), responseHeaders, duration, true, err.message, requestHeaders)
+      finalizeLog(err.message)
 
       sendStreamEvent(mainWindow, {
         platformId: platform.id,
@@ -447,37 +645,50 @@ export class ProxyManager {
     duration: number,
     isStream: boolean,
     error?: string,
-    filteredHeaders?: Record<string, string>
+    filteredHeaders?: Record<string, string>,
+    actualPath?: string,
+    streamData?: string,
+    inputTokens?: number,
+    outputTokens?: number,
+    cacheReadInputTokens?: number,
+    firstTokenTime?: number | null,
+    tokensPerSecond?: number | null
   ): void {
     try {
       const requestBody = (req as any).requestBody
-      const pathPrefix = platform.localPath || ''
-      const fullPath = `${pathPrefix}${req.path}`
+      // 使用去掉前缀后的实际路径
+      const logPath = actualPath || req.path
 
       // 使用过滤后的请求头（如果提供）
       const requestHeaders = filteredHeaders || {}
 
       console.log(`[Proxy Debug] baseUrl: ${platform.baseUrl}`)
-      console.log(`[Proxy Debug] localPath: ${platform.localPath || '(empty)'}`)
+      console.log(`[Proxy Debug] pathPrefix: ${platform.pathPrefix}`)
       console.log(`[Proxy Debug] req.path: ${req.path}`)
-      console.log(`[Proxy Debug] fullPath: ${fullPath}`)
+      console.log(`[Proxy Debug] actualPath: ${logPath}`)
 
       db.createLog({
         platformId: platform.id,
         baseUrl: platform.baseUrl,
         method: req.method || 'GET',
-        path: fullPath,
+        path: logPath,
         requestHeaders,
         requestBody: requestBody ? JSON.stringify(requestBody, null, 2) : undefined,
         responseStatus,
         responseHeaders,
         responseBody,
+        streamData,
         duration,
         isStream,
+        inputTokens,
+        outputTokens,
+        cacheReadInputTokens,
+        firstTokenTime: firstTokenTime ?? undefined,
+        tokensPerSecond: tokensPerSecond ?? undefined,
         error
       })
 
-      console.log(`[Proxy] ${platform.name} - 日志已创建: ${req.method} ${fullPath} -> ${responseStatus} (${duration}ms)`)
+      console.log(`[Proxy] ${platform.name} - 日志已创建: ${req.method} ${logPath} -> ${responseStatus} (${duration}ms)`)
     } catch (err) {
       console.error(`[Proxy] 创建日志失败:`, err)
     }

@@ -1,3 +1,5 @@
+import type { Platform } from './types'
+
 export const APP_NAME = 'CC Look'
 
 export const DEFAULT_PLATFORMS: Partial<Platform>[] = [
@@ -5,13 +7,13 @@ export const DEFAULT_PLATFORMS: Partial<Platform>[] = [
     name: 'OpenAI',
     protocol: 'openai',
     baseUrl: 'https://api.openai.com',
-    localPort: 3101
+    pathPrefix: '/openai'
   },
   {
     name: 'Claude',
     protocol: 'anthropic',
     baseUrl: 'https://api.anthropic.com',
-    localPort: 3102
+    pathPrefix: '/claude'
   }
 ]
 

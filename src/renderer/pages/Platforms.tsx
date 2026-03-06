@@ -6,18 +6,14 @@ interface PlatformFormData {
   name: string
   protocol: ProtocolType
   baseUrl: string
-  apiKey: string
-  localPort: number
-  localPath: string
+  pathPrefix: string
 }
 
 const initialFormData: PlatformFormData = {
   name: '',
   protocol: 'openai',
   baseUrl: 'https://api.openai.com',
-  apiKey: '',
-  localPort: 3101,
-  localPath: ''
+  pathPrefix: '/openai'
 }
 
 export default function Platforms() {
@@ -33,13 +29,17 @@ export default function Platforms() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // 确保路径前缀以 / 开头
+    const pathPrefix = formData.pathPrefix.startsWith('/') ? formData.pathPrefix : `/${formData.pathPrefix}`
+
     if (editingPlatform) {
       // 更新平台
-      await usePlatformStore.getState().updatePlatform(editingPlatform.id, formData)
+      await usePlatformStore.getState().updatePlatform(editingPlatform.id, { ...formData, pathPrefix })
     } else {
       // 创建平台
       await createPlatform({
         ...formData,
+        pathPrefix,
         enabled: true
       })
     }
@@ -55,9 +55,7 @@ export default function Platforms() {
       name: platform.name,
       protocol: platform.protocol,
       baseUrl: platform.baseUrl,
-      apiKey: platform.apiKey,
-      localPort: platform.localPort,
-      localPath: platform.localPath || ''
+      pathPrefix: platform.pathPrefix
     })
     setShowModal(true)
   }
@@ -79,6 +77,10 @@ export default function Platforms() {
 
   const getProtocolLabel = (protocol: ProtocolType) => {
     return protocol === 'openai' ? 'OpenAI' : 'Anthropic'
+  }
+
+  const getDefaultPathPrefix = (protocol: ProtocolType) => {
+    return protocol === 'openai' ? '/openai' : '/claude'
   }
 
   return (
@@ -149,7 +151,7 @@ export default function Platforms() {
                         </span>
                       </div>
                       <div className="text-sm text-gray-500 mt-1">
-                        <span className="font-mono">http://localhost:{platform.localPort}</span>
+                        <span className="font-mono">{proxyStatus?.localUrl || `http://localhost:3100${platform.pathPrefix}`}</span>
                         <span className="mx-2">→</span>
                         <span className="font-mono">{platform.baseUrl}</span>
                       </div>
@@ -190,11 +192,11 @@ export default function Platforms() {
                     <div className="flex items-center gap-2 text-sm">
                       <span className="text-gray-500">本地 API 地址:</span>
                       <code className="px-2 py-1 bg-gray-100 rounded text-primary-600 font-mono text-xs">
-                        http://localhost:{platform.localPort}{platform.protocol === 'openai' ? '/v1/chat/completions' : '/v1/messages'}
+                        {proxyStatus?.localUrl}
                       </code>
                       <button
                         onClick={() => {
-                          navigator.clipboard.writeText(`http://localhost:${platform.localPort}${platform.protocol === 'openai' ? '/v1/chat/completions' : '/v1/messages'}`)
+                          navigator.clipboard.writeText(proxyStatus?.localUrl || '')
                         }}
                         className="text-gray-400 hover:text-gray-600"
                         title="复制地址"
@@ -209,12 +211,12 @@ export default function Platforms() {
                     <div className="bg-gray-900 rounded-md p-3 text-xs font-mono text-gray-300 overflow-x-auto">
                       <div className="text-gray-500 mb-2"># curl 示例</div>
                       <pre className="whitespace-pre-wrap break-all">
-{platform.protocol === 'openai' ? `curl http://localhost:${platform.localPort}/v1/chat/completions \\
+{platform.protocol === 'openai' ? `curl ${proxyStatus?.localUrl}/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "gpt-4",
     "messages": [{"role": "user", "content": "Hello!"}]
-  }'` : `curl http://localhost:${platform.localPort}/v1/messages \\
+  }'` : `curl ${proxyStatus?.localUrl}/v1/messages \\
   -H "Content-Type: application/json" \\
   -H "anthropic-version: 2023-06-01" \\
   -d '{
@@ -271,7 +273,8 @@ export default function Platforms() {
                         protocol,
                         baseUrl: protocol === 'openai'
                           ? 'https://api.openai.com'
-                          : 'https://api.anthropic.com'
+                          : 'https://api.anthropic.com',
+                        pathPrefix: getDefaultPathPrefix(protocol)
                       })
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -296,53 +299,21 @@ export default function Platforms() {
                   />
                 </div>
 
-                {/* API Key */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    API Key <span className="text-gray-400 font-normal">(可选)</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={formData.apiKey}
-                    onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
-                    placeholder="留空则直接转发客户端请求头"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    如果留空，代理会直接转发客户端发送的 Authorization/x-api-key 请求头
-                  </p>
-                </div>
-
-                {/* Local Port */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    本地端口
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.localPort}
-                    onChange={(e) => setFormData({ ...formData, localPort: parseInt(e.target.value) })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    min={1024}
-                    max={65535}
-                    required
-                  />
-                </div>
-
-                {/* Local Path Prefix */}
+                {/* Path Prefix */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     路径前缀
                   </label>
                   <input
                     type="text"
-                    value={formData.localPath}
-                    onChange={(e) => setFormData({ ...formData, localPath: e.target.value })}
+                    value={formData.pathPrefix}
+                    onChange={(e) => setFormData({ ...formData, pathPrefix: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 font-mono text-sm"
-                    placeholder="/api/anthropic (可选)"
+                    placeholder="/openai"
+                    required
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    转发时在 baseUrl 和请求路径之间添加的前缀
+                    用于区分不同平台的 URL 前缀，例如 <code>/openai</code> 或 <code>/claude</code>
                   </p>
                 </div>
               </div>

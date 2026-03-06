@@ -80,17 +80,17 @@ export default function Settings() {
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <h3 className="font-medium text-gray-900 mb-3">代理设置</h3>
           <div>
-            <label className="block text-sm text-gray-700 mb-2">基础端口号</label>
+            <label className="block text-sm text-gray-700 mb-2">代理端口</label>
             <input
               type="number"
-              value={settings.basePort}
-              onChange={(e) => setSettings({ ...settings, basePort: parseInt(e.target.value) })}
+              value={settings.proxyPort}
+              onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               min={1024}
               max={65535}
             />
             <p className="text-xs text-gray-500 mt-1">
-              新添加的平台将从此端口开始递增分配
+              所有平台共用同一个代理端口，通过 URL 路径前缀区分不同平台
             </p>
           </div>
         </div>

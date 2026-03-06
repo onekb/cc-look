@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
-import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type StreamEvent, type PlatformProxy } from '@shared/types'
+import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type StreamEvent, type PlatformProxy, DEFAULT_SETTINGS } from '@shared/types'
 import * as db from '../database'
 import { ProxyManager } from '../proxy'
 
@@ -8,6 +8,10 @@ let mainWindow: BrowserWindow | null = null
 
 export function setupIpcHandlers(): void {
   mainWindow = BrowserWindow.getAllWindows()[0]
+
+  // 从设置中获取代理端口
+  const settings = db.getSettings()
+  proxyManager.setPort(settings.proxyPort || DEFAULT_SETTINGS.proxyPort)
 
   // ==================== 平台管理 ====================
 
@@ -23,20 +27,19 @@ export function setupIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.PLATFORM_CREATE, (_, data: Omit<Platform, 'id' | 'createdAt' | 'updatedAt'>): Platform => {
     console.log(`[IPC] 创建平台: ${data.name}`)
-    return db.createPlatform(data)
+    const platform = db.createPlatform(data)
+    // 注册平台到代理管理器
+    proxyManager.registerPlatform(platform)
+    return platform
   })
 
   ipcMain.handle(IPC_CHANNELS.PLATFORM_UPDATE, async (_, id: string, updates: Partial<Platform>): Promise<Platform | null> => {
     console.log(`[IPC] 更新平台: ${id}`)
     const platform = db.updatePlatform(id, updates)
 
-    // 如果端口改变且代理正在运行，重启代理
-    if (platform && updates.localPort !== undefined) {
-      proxyManager.stop(id)
-      const success = await proxyManager.start(platform, mainWindow)
-      if (!success) {
-        dialog.showErrorBox('重启失败', `无法重启代理服务，端口 ${platform.localPort} 可能已被占用`)
-      }
+    // 更新代理管理器中的平台配置
+    if (platform) {
+      proxyManager.registerPlatform(platform)
     }
 
     return platform
@@ -44,7 +47,7 @@ export function setupIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.PLATFORM_DELETE, (_, id: string): boolean => {
     console.log(`[IPC] 删除平台: ${id}`)
-    proxyManager.stop(id)
+    proxyManager.unregisterPlatform(id)
     return db.deletePlatform(id)
   })
 
@@ -65,16 +68,25 @@ export function setupIpcHandlers(): void {
       dialog.showErrorBox('启动失败', `平台不存在: ${platformId}`)
       return false
     }
-    const success = await proxyManager.start(platform, mainWindow)
+
+    // 注册平台到代理管理器
+    proxyManager.registerPlatform(platform)
+
+    // 启动代理服务器（如果还没启动的话）
+    const success = await proxyManager.start(mainWindow)
     if (!success) {
-      dialog.showErrorBox('启动失败', `无法启动代理服务，端口 ${platform.localPort} 可能已被占用`)
+      dialog.showErrorBox('启动失败', `无法启动代理服务，端口 ${proxyManager.getPort()} 可能已被占用`)
     }
     return success
   })
 
   ipcMain.handle(IPC_CHANNELS.PROXY_STOP, (_, platformId: string): boolean => {
     console.log(`[IPC] 停止代理: ${platformId}`)
-    return proxyManager.stop(platformId)
+    // 注销平台
+    proxyManager.unregisterPlatform(platformId)
+    // 如果没有平台了，停止服务器
+    // 注意：这里我们保持服务器运行，只是取消注册该平台
+    return true
   })
 
   ipcMain.handle(IPC_CHANNELS.PROXY_STATUS, (_, platformId: string): PlatformProxy | null => {
@@ -111,7 +123,16 @@ export function setupIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_, settings: Partial<AppSettings>): AppSettings => {
     console.log(`[IPC] 更新设置`)
-    return db.setSettings(settings)
+    const newSettings = db.setSettings(settings)
+
+    // 如果端口改变了，更新代理管理器的端口
+    if (settings.proxyPort !== undefined) {
+      proxyManager.setPort(settings.proxyPort)
+      // 如果代理正在运行，需要重启
+      proxyManager.stop()
+    }
+
+    return newSettings
   })
 }
 
