@@ -73,5 +73,10 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/**/*
+          files: |
+            release/**/*.dmg
+            release/**/*.zip
+            release/**/*.exe
+            release/**/*.blockmap
+            release/**/*.yml
           generate_release_notes: true
