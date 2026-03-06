@@ -6,7 +6,7 @@
     "output": "release/${version}"
   },
   "files": [
-    "dist/**/*",
+    "out/**/*",
     "resources/**/*"
   ],
   "mac": {
