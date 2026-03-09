@@ -134,8 +134,14 @@ npm run build:win   # Windows
    - 代理服务将在 `http://localhost:5005` 启动
 
 3. **配置应用**
-   - 将您的应用或工具的 API Base URL 改为本地代理地址
-   - 例如：`http://localhost:5005/bigmodel/v1/messages`
+
+   **OpenClaw 用户：**
+   - 修改 `~/.openclaw/agents/main/agent/models.json` 中的 `baseUrl` 配置
+   - 将 baseUrl 改为 `http://localhost:5005/{路径前缀}`
+
+   **Claude Code 用户：**
+   - 配合 [CC Switch](https://github.com/farion1231/cc-switch) 使用，30秒完成配置！
+   - 操作视频：<video src="https://raw.githubusercontent.com/onekb/cc-look/refs/heads/main/resources/cc-look-used.mp4" width="100%" controls></video>
 
 4. **监控调用**
    - 在「调用日志」页面查看实时请求和历史记录
