@@ -9,12 +9,84 @@ interface PlatformFormData {
   pathPrefix: string
 }
 
+interface QuickPlatformPreset extends PlatformFormData {
+  description: string
+  tags: string[]
+}
+
 const initialFormData: PlatformFormData = {
   name: '',
   protocol: 'openai',
   baseUrl: 'https://api.openai.com',
   pathPrefix: '/openai'
 }
+
+const quickPlatformPresets: QuickPlatformPreset[] = [
+  {
+    name: 'OpenAI',
+    protocol: 'openai',
+    baseUrl: 'https://api.openai.com',
+    pathPrefix: '/openai',
+    description: '官方 OpenAI API，适合 Chat Completions 和 Responses 兼容场景。',
+    tags: ['官方', 'OpenAI']
+  },
+  {
+    name: 'Claude',
+    protocol: 'anthropic',
+    baseUrl: 'https://api.anthropic.com',
+    pathPrefix: '/claude',
+    description: 'Anthropic 官方 Claude API。',
+    tags: ['官方', 'Anthropic']
+  },
+  {
+    name: 'DeepSeek',
+    protocol: 'openai',
+    baseUrl: 'https://api.deepseek.com',
+    pathPrefix: '/deepseek',
+    description: 'DeepSeek 官方 OpenAI 兼容接口。',
+    tags: ['热门', 'OpenAI 兼容']
+  },
+  {
+    name: 'Gemini',
+    protocol: 'openai',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    pathPrefix: '/gemini',
+    description: 'Google Gemini OpenAI 兼容入口。',
+    tags: ['Google', 'OpenAI 兼容']
+  },
+  {
+    name: '智谱',
+    protocol: 'anthropic',
+    baseUrl: 'https://open.bigmodel.cn/api/anthropic',
+    pathPrefix: '/bigmodel',
+    description: '智谱 Anthropic 兼容接口。',
+    tags: ['国内', 'Anthropic 兼容']
+  },
+  {
+    name: 'Kimi',
+    protocol: 'anthropic',
+    baseUrl: 'https://api.kimi.com/coding',
+    pathPrefix: '/kimi',
+    description: 'Moonshot Kimi Coding 接口。',
+    tags: ['Moonshot', 'Anthropic 兼容']
+  },
+  {
+    name: '阿里云百炼',
+    protocol: 'anthropic',
+    baseUrl: 'https://coding.dashscope.aliyuncs.com/apps/anthropic',
+    pathPrefix: '/dashscope',
+    description: '百炼 Anthropic 兼容入口。',
+    tags: ['阿里云', 'Anthropic 兼容']
+  },
+  {
+    name: 'Z.ai',
+    protocol: 'anthropic',
+    baseUrl: 'https://api.z.ai/api/anthropic',
+    pathPrefix: '/z_ai',
+    description: 'Z.ai Anthropic 兼容接口。',
+    tags: ['国内', 'Anthropic 兼容']
+  }
+]
 
 export default function Platforms() {
   const { platforms, loading, fetchPlatforms, createPlatform, deletePlatform, proxyState, fetchProxyState, startProxy, stopProxy } = usePlatformStore()
@@ -87,6 +159,21 @@ export default function Platforms() {
     return protocol === 'openai' ? '/openai' : '/claude'
   }
 
+  const applyPreset = (preset: QuickPlatformPreset) => {
+    setFormData({
+      name: preset.name,
+      protocol: preset.protocol,
+      baseUrl: preset.baseUrl,
+      pathPrefix: preset.pathPrefix
+    })
+  }
+
+  const openCreateModalWithPreset = (preset: QuickPlatformPreset) => {
+    setEditingPlatform(null)
+    applyPreset(preset)
+    setShowModal(true)
+  }
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -108,6 +195,52 @@ export default function Platforms() {
           </svg>
           添加平台
         </button>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">快速配置</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              常用平台模板已内置，点击后会自动填入协议、Base URL 和路径前缀，再按需微调即可。
+            </p>
+          </div>
+          <span className="rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-700">
+            {quickPlatformPresets.length} 个主流平台
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {quickPlatformPresets.map((preset) => (
+            <button
+              key={preset.name}
+              onClick={() => openCreateModalWithPreset(preset)}
+              className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:bg-white hover:shadow-md"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium text-gray-900">{preset.name}</div>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${
+                  preset.protocol === 'openai'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {getProtocolLabel(preset.protocol)}
+                </span>
+              </div>
+              <div className="mt-2 min-h-[2.5rem] text-xs leading-5 text-gray-500">
+                {preset.description}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {preset.tags.map((tag) => (
+                  <span key={tag} className="rounded-full bg-white px-2 py-0.5 text-xs text-gray-500 ring-1 ring-gray-200">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-3 font-mono text-xs text-gray-400">{preset.pathPrefix}</div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Proxy Status Card */}
@@ -257,6 +390,33 @@ export default function Platforms() {
 
             <form onSubmit={handleSubmit}>
               <div className="space-y-4">
+                {!editingPlatform && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      快速配置模板
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {quickPlatformPresets.map((preset) => (
+                        <button
+                          key={preset.name}
+                          type="button"
+                          onClick={() => applyPreset(preset)}
+                          className={`rounded-full px-3 py-1.5 text-xs transition-colors ${
+                            formData.name === preset.name && formData.baseUrl === preset.baseUrl
+                              ? 'bg-primary-600 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          {preset.name}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      选择模板后会自动填充协议、URL 和路径前缀，仍可继续修改。
+                    </p>
+                  </div>
+                )}
+
                 {/* Name */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">

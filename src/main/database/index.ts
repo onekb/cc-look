@@ -8,6 +8,10 @@ import * as fs from 'fs'
 let db: SqlJsDatabase | null = null
 let dbPath: string
 let settingsCache: AppSettings | null = null
+let pendingSaveTimer: NodeJS.Timeout | null = null
+let hasPendingChanges = false
+
+const SAVE_DEBOUNCE_MS = 1000
 
 export async function initDatabase(): Promise<void> {
   const SQL = await initSqlJs()
@@ -250,16 +254,54 @@ export async function initDatabase(): Promise<void> {
     console.log('[Database] 默认平台已添加')
   }
 
-  saveDatabase()
+  saveDatabase({ immediate: true })
   console.log('[Database] 初始化完成')
 }
 
+function writeDatabaseToDisk(): void {
+  if (!db || !dbPath) return
+
+  const data = db.export()
+  const buffer = Buffer.from(data)
+  fs.writeFileSync(dbPath, buffer)
+  hasPendingChanges = false
+}
+
 // 保存数据库到文件
-function saveDatabase(): void {
-  if (db && dbPath) {
-    const data = db.export()
-    const buffer = Buffer.from(data)
-    fs.writeFileSync(dbPath, buffer)
+function saveDatabase(options?: { immediate?: boolean }): void {
+  if (!db || !dbPath) return
+
+  hasPendingChanges = true
+
+  if (options?.immediate) {
+    if (pendingSaveTimer) {
+      clearTimeout(pendingSaveTimer)
+      pendingSaveTimer = null
+    }
+    writeDatabaseToDisk()
+    return
+  }
+
+  if (pendingSaveTimer) {
+    clearTimeout(pendingSaveTimer)
+  }
+
+  pendingSaveTimer = setTimeout(() => {
+    pendingSaveTimer = null
+    if (hasPendingChanges) {
+      writeDatabaseToDisk()
+    }
+  }, SAVE_DEBOUNCE_MS)
+}
+
+export function flushDatabase(): void {
+  if (pendingSaveTimer) {
+    clearTimeout(pendingSaveTimer)
+    pendingSaveTimer = null
+  }
+
+  if (hasPendingChanges) {
+    writeDatabaseToDisk()
   }
 }
 
@@ -320,7 +362,7 @@ export function createPlatform(data: Omit<Platform, 'id' | 'createdAt' | 'update
     ]
   )
 
-  saveDatabase()
+  saveDatabase({ immediate: true })
   console.log(`[Database] 创建平台: ${platform.name}`)
   return platform
 }
@@ -352,7 +394,7 @@ export function updatePlatform(id: string, updates: Partial<Platform>): Platform
     ]
   )
 
-  saveDatabase()
+  saveDatabase({ immediate: true })
   console.log(`[Database] 更新平台: ${updatedPlatform.name}`)
   return updatedPlatform
 }
@@ -363,7 +405,7 @@ export function deletePlatform(id: string): boolean {
 
   // 删除平台
   db!.run('DELETE FROM platforms WHERE id = ?', [id])
-  saveDatabase()
+  saveDatabase({ immediate: true })
   console.log(`[Database] 删除平台: ${id}`)
   return true
 }
@@ -470,12 +512,16 @@ export function clearLogs(platformId?: string): boolean {
   }
   // 执行 VACUUM 压缩数据库，释放磁盘空间
   db!.run('VACUUM')
-  saveDatabase()
+  saveDatabase({ immediate: true })
   return true
 }
 
 // 获取日志占用大小（预估）
 export function getLogSize(): { count: number; sizeBytes: number } {
+  if (hasPendingChanges) {
+    flushDatabase()
+  }
+
   const result = db!.exec('SELECT COUNT(*) FROM request_logs')
   const count = result.length > 0 ? (result[0].values[0][0] as number) : 0
 
@@ -529,6 +575,6 @@ export function setSettings(settings: Partial<AppSettings>): AppSettings {
   const currentSettings = getSettings()
   settingsCache = { ...currentSettings, ...settings }
   db!.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", ['appSettings', JSON.stringify(settingsCache)])
-  saveDatabase()
+  saveDatabase({ immediate: true })
   return settingsCache
 }

@@ -253,15 +253,28 @@ if (!logColumns.includes('newField')) {
 
 ## 数据持久化
 
-每次写操作后自动保存到文件：
+数据库采用“内存实时写入 + 文件延迟落盘”的策略：
+
+- 平台、设置、清空日志等低频关键操作会立即落盘
+- 请求日志写入会先写入内存数据库，再通过 1 秒防抖批量刷盘
+- 应用退出前会强制执行一次 `flushDatabase()`，避免未落盘数据丢失
+
+这样可以减少高频日志场景下反复 `db.export()` 和同步写文件带来的主线程阻塞。
 
 ```typescript
-function saveDatabase(): void {
-  if (db && dbPath) {
-    const data = db.export()
-    const buffer = Buffer.from(data)
-    fs.writeFileSync(dbPath, buffer)
+function saveDatabase(options?: { immediate?: boolean }): void {
+  hasPendingChanges = true
+
+  if (options?.immediate) {
+    writeDatabaseToDisk()
+    return
   }
+
+  pendingSaveTimer = setTimeout(() => {
+    if (hasPendingChanges) {
+      writeDatabaseToDisk()
+    }
+  }, 1000)
 }
 ```
 

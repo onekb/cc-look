@@ -1,7 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { setupIpcHandlers } from './ipc'
-import { initDatabase } from './database'
+import { flushDatabase, initDatabase } from './database'
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
@@ -70,4 +70,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  flushDatabase()
 })
