@@ -141,7 +141,13 @@ npm run build:win   # Windows
 
    **Claude Code 用户：**
    - 配合 [CC Switch](https://github.com/farion1231/cc-switch) 使用，30秒完成配置！
-   - 操作视频：<video src="https://raw.githubusercontent.com/onekb/cc-look/refs/heads/main/resources/cc-look-used.mp4" width="100%" controls></video>
+   - 操作视频：
+
+https://github.com/user-attachments/assets/a2238663-77bc-4b5b-8263-1a91d7610378
+
+  **其他工具 用户：**
+  - 酌情修改 `baseUrl`
+
 
 4. **监控调用**
    - 在「调用日志」页面查看实时请求和历史记录
