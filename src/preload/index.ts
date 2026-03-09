@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type StreamEvent, type PlatformProxy } from '@shared/types'
+import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type StreamEvent, type PlatformProxy, type UpdateCheckResult } from '@shared/types'
 
 // 暴露给渲染进程的 API
 const api = {
@@ -48,6 +48,11 @@ const api = {
   // 调试
   debug: {
     testFloatingWindow: () => ipcRenderer.invoke('debug:testFloatingWindow') as Promise<void>
+  },
+
+  // 更新检查
+  update: {
+    check: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK) as Promise<UpdateCheckResult>
   }
 }
 

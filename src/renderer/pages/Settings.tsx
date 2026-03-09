@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AppSettings } from '@shared/types'
+import type { AppSettings, UpdateCheckResult } from '@shared/types'
 import { DEFAULT_SETTINGS } from '@shared/types'
 
 export default function Settings() {
@@ -7,6 +7,8 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
 
   useEffect(() => {
     fetchSettings()
@@ -36,6 +38,19 @@ export default function Settings() {
       setMessage('保存失败')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true)
+    setUpdateResult(null)
+    try {
+      const result = await window.api.update.check()
+      setUpdateResult(result)
+    } catch (error) {
+      console.error('Failed to check update:', error)
+    } finally {
+      setCheckingUpdate(false)
     }
   }
 
@@ -180,6 +195,44 @@ export default function Settings() {
               </a>
             </p>
             <p className="text-gray-400">MIT License © 2025 CC Look Team</p>
+
+            {/* 检查更新 */}
+            <div className="pt-3 mt-3 border-t border-gray-100">
+              <button
+                onClick={handleCheckUpdate}
+                disabled={checkingUpdate}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 transition-colors text-sm"
+              >
+                {checkingUpdate ? '检查中...' : '检查更新'}
+              </button>
+
+              {updateResult && (
+                <div className="mt-3">
+                  {updateResult.hasUpdate ? (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                      <p className="text-green-700 font-medium">
+                        发现新版本 v{updateResult.latestVersion}
+                      </p>
+                      <p className="text-green-600 text-xs mt-1">
+                        当前版本: v{updateResult.currentVersion}
+                      </p>
+                      <a
+                        href={updateResult.releaseUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block mt-2 text-sm text-green-700 hover:text-green-800 underline"
+                      >
+                        前往下载 →
+                      </a>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm">
+                      已是最新版本 (v{updateResult.currentVersion})
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

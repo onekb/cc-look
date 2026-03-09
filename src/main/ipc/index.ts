@@ -1,11 +1,15 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
-import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type StreamEvent, type PlatformProxy, DEFAULT_SETTINGS } from '@shared/types'
+import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type StreamEvent, type PlatformProxy, type UpdateCheckResult, DEFAULT_SETTINGS } from '@shared/types'
 import * as db from '../database'
 import { ProxyManager } from '../proxy'
 import { floatingWindowManager } from '../floatingWindow'
+import * as https from 'https'
 
 const proxyManager = new ProxyManager()
 let mainWindow: BrowserWindow | null = null
+
+// 当前版本
+const CURRENT_VERSION = '1.0.1'
 
 export function setupIpcHandlers(): void {
   mainWindow = BrowserWindow.getAllWindows()[0]
@@ -165,6 +169,94 @@ export function setupIpcHandlers(): void {
       charIndex++
     }, 100) // 每100ms输出一个字符
   })
+
+  // ==================== 更新检查 ====================
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async (): Promise<UpdateCheckResult> => {
+    console.log('[IPC] 检查更新')
+
+    return new Promise((resolve) => {
+      const options = {
+        hostname: 'api.github.com',
+        path: '/repos/onekb/cc-look/releases/latest',
+        method: 'GET',
+        headers: {
+          'User-Agent': 'CC-Look-App',
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      }
+
+      const req = https.request(options, (res) => {
+        let data = ''
+
+        res.on('data', (chunk) => {
+          data += chunk
+        })
+
+        res.on('end', () => {
+          try {
+            const release = JSON.parse(data)
+            const latestVersion = release.tag_name.replace(/^v/, '') // 移除 v 前缀
+
+            // 比较版本号
+            const hasUpdate = compareVersions(latestVersion, CURRENT_VERSION) > 0
+
+            resolve({
+              hasUpdate,
+              currentVersion: CURRENT_VERSION,
+              latestVersion,
+              releaseUrl: release.html_url,
+              releaseNotes: release.body?.slice(0, 500) // 截取前500字符
+            })
+          } catch (error) {
+            console.error('[IPC] 解析更新信息失败:', error)
+            resolve({
+              hasUpdate: false,
+              currentVersion: CURRENT_VERSION,
+              latestVersion: CURRENT_VERSION,
+              releaseUrl: 'https://github.com/onekb/cc-look/releases'
+            })
+          }
+        })
+      })
+
+      req.on('error', (error) => {
+        console.error('[IPC] 检查更新失败:', error)
+        resolve({
+          hasUpdate: false,
+          currentVersion: CURRENT_VERSION,
+          latestVersion: CURRENT_VERSION,
+          releaseUrl: 'https://github.com/onekb/cc-look/releases'
+        })
+      })
+
+      req.setTimeout(10000, () => {
+        req.destroy()
+        resolve({
+          hasUpdate: false,
+          currentVersion: CURRENT_VERSION,
+          latestVersion: CURRENT_VERSION,
+          releaseUrl: 'https://github.com/onekb/cc-look/releases'
+        })
+      })
+
+      req.end()
+    })
+  })
+}
+
+// 版本号比较函数
+function compareVersions(a: string, b: string): number {
+  const partsA = a.split('.').map(Number)
+  const partsB = b.split('.').map(Number)
+
+  for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+    const numA = partsA[i] || 0
+    const numB = partsB[i] || 0
+    if (numA > numB) return 1
+    if (numA < numB) return -1
+  }
+  return 0
 }
 
 // 导出流事件发送函数

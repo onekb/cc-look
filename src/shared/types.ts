@@ -88,8 +88,20 @@ export const IPC_CHANNELS = {
 
   // 设置
   SETTINGS_GET: 'settings:get',
-  SETTINGS_SET: 'settings:set'
+  SETTINGS_SET: 'settings:set',
+
+  // 更新检查
+  UPDATE_CHECK: 'update:check'
 } as const
+
+// 更新检查结果
+export interface UpdateCheckResult {
+  hasUpdate: boolean
+  currentVersion: string
+  latestVersion: string
+  releaseUrl: string
+  releaseNotes?: string
+}
 
 // 应用设置
 export interface AppSettings {
