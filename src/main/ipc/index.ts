@@ -242,6 +242,25 @@ export function setupIpcHandlers(): void {
       req.end()
     })
   })
+
+  // ==================== 自动启动代理服务 ====================
+
+  // 注册所有启用的平台并启动代理服务
+  const platforms = db.getAllPlatforms().filter(p => p.enabled)
+  for (const platform of platforms) {
+    proxyManager.registerPlatform(platform)
+  }
+
+  if (platforms.length > 0) {
+    console.log('[IPC] 自动启动代理服务...')
+    proxyManager.start(mainWindow).then((success) => {
+      if (success) {
+        console.log('[IPC] 代理服务自动启动成功')
+      } else {
+        console.error('[IPC] 代理服务自动启动失败')
+      }
+    })
+  }
 }
 
 // 版本号比较函数
