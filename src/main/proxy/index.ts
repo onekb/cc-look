@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express'
 import { type BrowserWindow } from 'electron'
-import { type Platform } from '@shared/types'
+import { type Platform, DEFAULT_SETTINGS } from '@shared/types'
 import { v4 as uuidv4 } from 'uuid'
 import * as http from 'http'
 import * as https from 'https'
@@ -87,6 +87,11 @@ export class ProxyManager {
       return false
     }
 
+    // 获取超时设置
+    const settings = db.getSettings()
+    const serverTimeout = settings.serverTimeout ?? DEFAULT_SETTINGS.serverTimeout
+    const keepAliveTimeout = settings.keepAliveTimeout ?? DEFAULT_SETTINGS.keepAliveTimeout
+
     const app = express()
     app.use(express.json({ limit: '10mb' }))
 
@@ -133,8 +138,10 @@ export class ProxyManager {
         console.log(`[Proxy] 已注册平台: ${Array.from(this.platforms.values()).map(p => `${p.name}(${p.pathPrefix})`).join(', ')}`)
         this.isRunning = true
         if (this.server) {
-          this.server.timeout = 120000
-          this.server.keepAliveTimeout = 65000
+          // 0 表示不限时
+          this.server.timeout = serverTimeout === 0 ? 0 : serverTimeout
+          this.server.keepAliveTimeout = keepAliveTimeout === 0 ? 0 : keepAliveTimeout
+          console.log(`[Proxy] 超时设置 - 服务器: ${serverTimeout === 0 ? '不限时' : serverTimeout + 'ms'}, Keep-Alive: ${keepAliveTimeout === 0 ? '不限时' : keepAliveTimeout + 'ms'}`)
         }
         resolve(true)
       })
@@ -333,10 +340,15 @@ export class ProxyManager {
       }
     })
 
-    proxyReq.setTimeout(120000, () => {
-      console.error(`[Proxy] 请求超时`)
-      proxyReq.destroy(new Error('Request timeout'))
-    })
+    // 获取请求超时设置（0 表示不限时）
+    const settings = db.getSettings()
+    const requestTimeout = settings.requestTimeout ?? DEFAULT_SETTINGS.requestTimeout
+    if (requestTimeout > 0) {
+      proxyReq.setTimeout(requestTimeout, () => {
+        console.error(`[Proxy] 请求超时 (${requestTimeout}ms)`)
+        proxyReq.destroy(new Error('Request timeout'))
+      })
+    }
 
     if (requestBody && Object.keys(requestBody).length > 0) {
       const bodyString = JSON.stringify(requestBody)

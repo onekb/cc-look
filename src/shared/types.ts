@@ -112,6 +112,10 @@ export interface AppSettings {
   autoStart: boolean
   minimizeToTray: boolean
   floatingWindow: boolean  // 是否启用桌面歌词浮动窗口
+  // 超时设置（毫秒，0 表示不限时）
+  requestTimeout: number  // 请求超时时间
+  serverTimeout: number   // 服务器超时时间
+  keepAliveTimeout: number // Keep-Alive 超时时间
 }
 
 // 默认设置
@@ -121,5 +125,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   proxyPort: 5005,
   autoStart: false,
   minimizeToTray: true,
-  floatingWindow: true
+  floatingWindow: true,
+  requestTimeout: 120000,   // 120 秒
+  serverTimeout: 120000,    // 120 秒
+  keepAliveTimeout: 65000   // 65 秒
 }

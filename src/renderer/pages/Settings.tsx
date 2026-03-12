@@ -126,19 +126,63 @@ export default function Settings() {
         {/* Proxy */}
         <div className="bg-white rounded-lg p-4 border border-gray-200">
           <h3 className="font-medium text-gray-900 mb-3">代理设置</h3>
-          <div>
-            <label className="block text-sm text-gray-700 mb-2">代理端口</label>
-            <input
-              type="number"
-              value={settings.proxyPort}
-              onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              min={1024}
-              max={65535}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              所有平台共用同一个代理端口，通过 URL 路径前缀区分不同平台
-            </p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-700 mb-2">代理端口</label>
+              <input
+                type="number"
+                value={settings.proxyPort}
+                onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                min={1024}
+                max={65535}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                所有平台共用同一个代理端口，通过 URL 路径前缀区分不同平台
+              </p>
+            </div>
+            <div className="pt-3 border-t border-gray-100">
+              <label className="block text-sm text-gray-700 mb-2">请求超时（秒）</label>
+              <input
+                type="number"
+                value={settings.requestTimeout ? settings.requestTimeout / 1000 : 0}
+                onChange={(e) => setSettings({ ...settings, requestTimeout: parseInt(e.target.value) * 1000 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                min={0}
+                max={3600}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                代理请求的超时时间，0 表示不限时（默认 120 秒）
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-2">服务器超时（秒）</label>
+              <input
+                type="number"
+                value={settings.serverTimeout ? settings.serverTimeout / 1000 : 0}
+                onChange={(e) => setSettings({ ...settings, serverTimeout: parseInt(e.target.value) * 1000 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                min={0}
+                max={3600}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                服务器连接超时时间，0 表示不限时（默认 120 秒）
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700 mb-2">Keep-Alive 超时（秒）</label>
+              <input
+                type="number"
+                value={settings.keepAliveTimeout ? settings.keepAliveTimeout / 1000 : 0}
+                onChange={(e) => setSettings({ ...settings, keepAliveTimeout: parseInt(e.target.value) * 1000 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                min={0}
+                max={300}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                HTTP Keep-Alive 连接超时时间，0 表示不限时（默认 65 秒）
+              </p>
+            </div>
           </div>
         </div>
 

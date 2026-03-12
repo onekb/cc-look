@@ -290,11 +290,14 @@ app.get('/health', (_req, res) => {
 ## 错误处理
 
 ```typescript
-// 请求超时
-proxyReq.setTimeout(120000, () => {
-  console.error('[Proxy] 请求超时')
-  proxyReq.destroy(new Error('Request timeout'))
-})
+// 请求超时（从设置中读取，0 表示不限时）
+const requestTimeout = settings.requestTimeout ?? 120000
+if (requestTimeout > 0) {
+  proxyReq.setTimeout(requestTimeout, () => {
+    console.error('[Proxy] 请求超时')
+    proxyReq.destroy(new Error('Request timeout'))
+  })
+}
 
 // 请求错误
 proxyReq.on('error', (err) => {
@@ -315,8 +318,9 @@ proxyRes.on('error', (err) => {
 | 配置 | 默认值 | 说明 |
 |------|--------|------|
 | 端口 | 5005 | 可在设置中修改 |
-| 请求超时 | 120s | 长时间流式请求 |
-| Keep-Alive | 65s | HTTP Keep-Alive |
+| 请求超时 | 120s | 长时间流式请求，0 表示不限时 |
+| 服务器超时 | 120s | 服务器连接超时，0 表示不限时 |
+| Keep-Alive | 65s | HTTP Keep-Alive，0 表示不限时 |
 | 请求体限制 | 10MB | JSON 请求体大小 |
 
 ## 使用示例
