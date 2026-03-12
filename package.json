@@ -1,6 +1,6 @@
 {
   "name": "cc-look",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "CC Look - 本地 AI API 代理软件 - 支持多平台 AI API 监控与调试",
   "main": "./out/main/index.js",
   "author": "CC Look Team",
