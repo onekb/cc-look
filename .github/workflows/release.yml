@@ -88,3 +88,4 @@ jobs:
             release/**/*.blockmap
             release/**/*.yml
           generate_release_notes: true
+          draft: false
