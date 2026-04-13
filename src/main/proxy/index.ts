@@ -574,6 +574,19 @@ export class ProxyManager {
             content: err.message,
             timestamp: Date.now()
           })
+
+          if (res.headersSent) {
+            res.end()
+          } else {
+            res.status(500).json({ error: 'Proxy response error', message: err.message })
+          }
+
+          sendStreamEvent(mainWindow, {
+            platformId: platform.id,
+            requestId,
+            type: 'end',
+            timestamp: Date.now()
+          })
         })
       }
     })
@@ -593,7 +606,16 @@ export class ProxyManager {
 
       if (!res.headersSent) {
         res.status(500).json({ error: 'Proxy error', message: err.message })
+      } else {
+        res.end()
       }
+
+      sendStreamEvent(mainWindow, {
+        platformId: platform.id,
+        requestId,
+        type: 'end',
+        timestamp: Date.now()
+      })
     })
 
     // 获取请求超时设置（0 表示不限时）
@@ -1057,7 +1079,12 @@ export class ProxyManager {
           timestamp: Date.now()
         })
 
+        // 浮动窗口 - 错误结束
+        floatingWindowManager.sendContent(requestId, '', 'end')
+        floatingWindowManager.scheduleClose(requestId, 1000)
+
         res.end()
+        proxyRes.destroy()
       })
     } else {
       // 未压缩响应：直接处理
@@ -1101,6 +1128,15 @@ export class ProxyManager {
       // 浮动窗口 - 错误结束
       floatingWindowManager.sendContent(requestId, '', 'end')
       floatingWindowManager.scheduleClose(requestId, 1000)
+
+      res.end()
+
+      sendStreamEvent(mainWindow, {
+        platformId: platform.id,
+        requestId,
+        type: 'end',
+        timestamp: Date.now()
+      })
     })
   }
 
