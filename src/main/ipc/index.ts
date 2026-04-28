@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
 import { IPC_CHANNELS, type Platform, type RequestLog, type AppSettings, type StreamEvent, type UpdateCheckResult, DEFAULT_SETTINGS } from '@shared/types'
+import { APP_VERSION } from '@shared/constants'
 import * as db from '../database'
 import { ProxyManager } from '../proxy'
 import { floatingWindowManager } from '../floatingWindow'
@@ -69,9 +70,6 @@ async function getSystemCaStatus(): Promise<'trusted' | 'installed_untrusted' | 
 
 const proxyManager = new ProxyManager()
 let mainWindow: BrowserWindow | null = null
-
-// 当前版本
-const CURRENT_VERSION = '1.3.7'
 
 export function setupIpcHandlers(): void {
   mainWindow = BrowserWindow.getAllWindows()[0]
@@ -287,11 +285,11 @@ export function setupIpcHandlers(): void {
             const latestVersion = release.tag_name.replace(/^v/, '') // 移除 v 前缀
 
             // 比较版本号
-            const hasUpdate = compareVersions(latestVersion, CURRENT_VERSION) > 0
+            const hasUpdate = compareVersions(latestVersion, APP_VERSION) > 0
 
             resolve({
               hasUpdate,
-              currentVersion: CURRENT_VERSION,
+              currentVersion: APP_VERSION,
               latestVersion,
               releaseUrl: release.html_url,
               releaseNotes: release.body?.slice(0, 500) // 截取前500字符
@@ -300,8 +298,8 @@ export function setupIpcHandlers(): void {
             console.error('[IPC] 解析更新信息失败:', error)
             resolve({
               hasUpdate: false,
-              currentVersion: CURRENT_VERSION,
-              latestVersion: CURRENT_VERSION,
+              currentVersion: APP_VERSION,
+              latestVersion: APP_VERSION,
               releaseUrl: 'https://github.com/onekb/cc-look/releases'
             })
           }
@@ -312,8 +310,8 @@ export function setupIpcHandlers(): void {
         console.error('[IPC] 检查更新失败:', error)
         resolve({
           hasUpdate: false,
-          currentVersion: CURRENT_VERSION,
-          latestVersion: CURRENT_VERSION,
+          currentVersion: APP_VERSION,
+          latestVersion: APP_VERSION,
           releaseUrl: 'https://github.com/onekb/cc-look/releases'
         })
       })
@@ -322,8 +320,8 @@ export function setupIpcHandlers(): void {
         req.destroy()
         resolve({
           hasUpdate: false,
-          currentVersion: CURRENT_VERSION,
-          latestVersion: CURRENT_VERSION,
+          currentVersion: APP_VERSION,
+          latestVersion: APP_VERSION,
           releaseUrl: 'https://github.com/onekb/cc-look/releases'
         })
       })

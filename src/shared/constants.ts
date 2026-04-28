@@ -1,6 +1,7 @@
 import type { Platform } from './types'
 
 export const APP_NAME = 'CC Look'
+export const APP_VERSION = '1.3.11'
 
 export const DEFAULT_PLATFORMS: Partial<Platform>[] = [
   {

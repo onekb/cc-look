@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AppSettings, UpdateCheckResult } from '@shared/types'
+import { APP_VERSION } from '@shared/constants'
 import { DEFAULT_SETTINGS } from '@shared/types'
 import { useTheme } from '../hooks/useTheme'
 
@@ -305,7 +306,7 @@ export default function Settings() {
             <h3 className="font-semibold text-gray-900 dark:text-gray-100">关于</h3>
           </div>
           <div className="text-sm text-gray-600 dark:text-gray-400 space-y-2 pl-10">
-            <p className="font-semibold text-gray-900 dark:text-gray-100">CC Look v1.3.7</p>
+            <p className="font-semibold text-gray-900 dark:text-gray-100">CC Look v{APP_VERSION}</p>
             <p className="text-gray-400">本地 AI API 代理软件 - 开源免费</p>
             <p>
               <a

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { APP_VERSION } from '@shared/constants'
 import iconUrl from '../../../resources/icon.png'
 
 interface SidebarProps {
@@ -91,7 +92,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {/* Footer */}
       <div className="px-5 py-4 border-t border-white/5">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-gray-500">v1.3.7</span>
+          <span className="text-[11px] text-gray-500">v{APP_VERSION}</span>
           <div className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500/80" />
             <span className="text-[11px] text-gray-500">运行中</span>
